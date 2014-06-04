@@ -1,51 +1,15 @@
-<script type="text/javascript">
-// Remember this script tag
-var scripts = document.getElementsByTagName('script');
-var script = scripts[scripts.length - 1];
-var header = 'h2';
-
-// When loaded, post-process document:
-$(document).ready(function() {
-  var article = $(script).parent();
-  var sections = article.children(header);
-  sections.slice(0, -1).each(function() {
-    $(this).css({cursor: 'pointer'});
-    $(this).prepend("➤ ");
-    $(this).nextUntil(header).wrapAll('<div class="more" />');
-    $(this).click(function() {
-      $(this).next('.more').slideToggle();
-    });
-  });
-});
+# The Network is Reliable: Getting Real about Real-World Communication Failures
+### Peter Bailis (UC Berkeley) and Kyle Kingsbury (Jepsen Networks)
 
 
-</script>
+"The network is reliable" tops Peter Deutsch's classic list of [Eight Fallacies of
+"Distributed Computing](https://blogs.oracle.com/jag/resource/Fallacies.html), "all [of which] prove to be false in the long run and all cause big trouble and painful learning experiences." Accounting for and understanding the implications of network behavior is key in designing robust distributed programs---in fact, six of Deutsch's remaining seven "Fallacies" directly pertain to limitations on the network. This should be unsurprising: the ability (and often requirement) to communicate over a shared channel is a defining characteristic of distributed programs, and many of the key results in the field pertain to the possibility and impossibility of performing distributed computations under a given network model.
 
+For example, the celebrated [FLP impossibility result](http://dl.acm.org/citation.cfm?id=214121) demonstrates the inability to guarantee consensus in an asynchronous network (i.e., one facing indefinite communication *partitions* between processes) with one faulty process. This means that, with unreliable delivery guarantees on messages, basic operations such as modifying the set of machines in a cluster (i.e., maintaining group membership)---as systems like Zookeeper perform today---are not guaranteed to complete in the event of both network asynchrony and individual server failures. Related results apply to the inability to guarantee the progress of [serializable transactions](http://dl.acm.org/citation.cfm?id=5508), [linearizable reads/writes](http://dl.acm.org/citation.cfm?id=564601), and a variety of [useful, programmer-friendly guarantees](http://www.bailis.org/papers/hat-vldb2014.pdf). The implications are not simply academic: these impossibility results have [motivated a proliferation systems and designs](http://queue.acm.org/detail.cfm?id=2462076) offering a range of guarantees in the event of network failures. However, at the same time, under a synchronous, reliable network that is guaranteed to deliver messages in a timely manner, FLP and many of these related results [no longer hold](http://dl.acm.org/citation.cfm?id=42283): by making stronger guarantees about the network behavior, we can circumvent the  programmability implications of these impossibility proofs.
 
-*I've been discussing <a href="/tags/jepsen">Jepsen</a> and partition tolerance
-with <a href="https://twitter.com/pbailis/">Peter Bailis</a> over the past few
-weeks, and I'm honored to present this post as a collaboration between the two
-of us.  We'd also like to extend our sincere appreciation to everyone who
-contributed their research and experience to this piece.*
+Therefore, the degree of network reliability is hugely influential in determining how to build systems and directly determines the kinds of operations we can reliably perform in without waiting---and the kinds of operations we cannot rely on to complete. The degree to which networks are actually reliable in the real-world is the subject of considerable and evolving debate. Some claim that modern networks are reliable and that we are too concerned with designing for *theoretical* failure modes. They often accept that single-node failures are common but argue that we can [reliably detect and handle them](http://web.archive.org/web/20140327023856/http://voltdb.com/clarifications-cap-theorem-and-data-related-errors/). Conversely, others attest that partitions do occur in their systems, and that, as James Hamilton of Amazon Web Services [neatly summarizes](http://perspectives.mvdirona.com/2010/04/07/StonebrakerOnCAPTheoremAndDatabases.aspx), "network partitions should be rare but net gear continues to cause more issues than it should." So who's right?
 
-Network partitions are a contentious subject. Some claim that modern
-networks are reliable and that we are too concerned with designing for
-*theoretical* failure modes. They often accept that single-node failures are
-common but argue that we can <a
-href="http://web.archive.org/web/20140327023856/http://voltdb.com/clarifications-cap-theorem-and-data-related-errors/">reliably
-detect and handle them</a>. Conversely, others <a
-href="http://www.rgoarchitects.com/files/fallacies.pdf">subscribe</a> to Peter
-Deutsch's <a
-href="https://blogs.oracle.com/jag/resource/Fallacies.html">Fallacies of
-Distributed Computing</a> and disagree. They attest that partitions do occur
-in their systems, and that, as James Hamilton of Amazon Web Services [neatly
-summarizes](http://perspectives.mvdirona.com/2010/04/07/StonebrakerOnCAPTheoremAndDatabases.aspx),
-"network partitions should be rare but net gear continues to cause more issues
-than it should." The answer to this debate <a
-href="http://henryr.github.io/cap-faq/">radically affects</a> the design of
-distributed databases, queues, and applications. So who's right?
-
-A key challenge in this dispute is the lack of evidence. We have few normalized
+A key challenge in this discussion is the lack of evidence. We have few normalized
 bases for comparing network and application reliability--and even less data.
 We can track link availability and estimate packet loss, but understanding the
 end-to-end effect on *applications* is more difficult. The scant evidence we
@@ -62,20 +26,18 @@ As a result, much of what we know about the failure modes of real-wold
 distributed systems is founded on guesswork and rumor. Sysadmins and developers
 will swap stories over beers, but detailed, public postmortems and
 comprehensive surveys of network availability are few and far between. In this
-post, we'd like to bring a few of these stories together. We believe this is a
-first step towards a more open and honest discussion of real-world partition
-behavior, and, ultimately, more robust distributed systems design.
+post, we'd like to informally bring a few of these stories together. Our focus is on, when possible, descriptions of actual network behavior, and (more often), when not, the implications of network failures and asynchrony on real-world systems deployments.  We believe this is a first step towards a more open and honest discussion of real-world partition behavior, and, ultimately, more robust distributed systems design.
 
 ## Rumblings from large deployments
 
 To start off, let's consider evidence from big players in distributed systems:
 companies running globally distributed infrastructure with hundreds of
-thousands of nodes. Of all of the data we have collected, these reports best
+thousands of servers. Of all of the data we have collected, these reports best
 summarize operation in the large, distilling the experience of operating what
 are likely the biggest distributed systems ever deployed. Their publications
 (unlike many of the case studies we will examine later) often capture aggregate
 system behavior and large-scale statistical trends, and indicate (often
-obliquely) that partitions are a significant concern in their deployments.
+obliquely) that partitions are of concern in their deployments.
 
 ### The Microsoft Datacenter Study
 
@@ -163,116 +125,15 @@ was too restrictive for many applications:
 > applications need a relaxed approach."
 
 
-## Application-level failures
-
-Not all partitions originate in the physical network. Sometimes dropped or
-delayed messages are a consequence of crashes, race conditions, OS scheduler
-latency, or overloaded processes. The following studies highlight the fact that
-partitions--wherein the system delays or drops messages--can occur at any layer
-of the software stack.
-
-### CPU use and service contention
-
-Bonsai.io <a
-href="http://www.bonsai.io/blog/2013/03/05/outage-post-mortem">discovered</a>
-high CPU and memory use on an ElasticSearch node combined with difficulty
-connecting to various cluster components, likely a consequence of an
-"excessively high number of expensive requests being allowed through to the
-cluster."
-
-They restarted the cluster, but on restarting the cluster partitioned itself
-into two independent components. A subsequent cluster restart resolved the
-partition, but customers complained they were unable to delete or create
-indices. The logs revealed that servers were repeatedly trying to recover
-unassigned indices, which "poisoned the cluster's attempt to service normal
-traffic which changes the cluster state." The failure led to 20 minutes of
-unavailability and six hours of degraded service.
-
-Bonsai concludes by noting that large-scale ElasticSearch clusters should use
-dedicated nodes which handle routing and leader election without serving normal
-requests for data, to prevent partitions under heavy load. They also emphasize
-the importance of request throttling and setting proper quorum values.
-
-### Long GC pauses and IO
-
-Stop-the-world garbage collection and blocking for disk IO can cause runtime
-latencies on the order of seconds to minutes. As <a
-href=http://blog.searchbox.io/blog/2013/03/03/january-postmortem">Searchbox
-IO</a> and [dozens of other production
-users](https://github.com/elasticsearch/elasticsearch/issues/2488) have found,
-GC pressure in an ElasticSearch cluster can cause secondary nodes to declare a
-primary dead and to attempt a new election. Because their configuration used a
-low value of `zen.minimum_master_nodes`, ElasticSearch was able to elect two
-simultaneous primaries, leading to inconsistency and downtime. Even with
-`minimum_master_nodes` larger than a majority, ElasticSearch does not prevent
-nodes from taking part in multiple network components; GC pauses and high
-IO_WAIT times due to IO can cause split brain, write loss, and index
-corruption.
-
-### MySQL overload and a Pacemaker segfault
-
-Github relies heavily on Pacemaker and Heartbeat: programs which coordinate
-cluster resources between nodes. They use Percona Replication Manager, a
-resource agent for Pacemaker, to replicate their MySQL database between three
-nodes.
-
-On September 10th, 2012, <a href="https://github.com/blog/1261-github-availability-this-week">a routine database migration caused unexpectedly high
-load on the MySQL primary</a>. Percona Replication Manager, unable to perform
-health checks against the busy MySQL instance, decided the primary was down and
-promoted a secondary. The secondary had a cold cache and performed poorly.
-Normal query load on the node caused it to slow down, and Percona failed *back*
-to the original primary. The operations team put Pacemaker into
-maintenance-mode, temporarily halting automatic failover. The site appeared to
-recover.
-
-The next morning, the operations team discovered that the standby MySQL node
-was no longer replicating changes from the primary. Operations decided to
-disable Pacemaker's maintenance mode to allow the replication manager to fix
-the problem.
-
-> Upon attempting to disable maintenance-mode, a Pacemaker segfault occurred
-> that resulted in a cluster state partition. After this update, two nodes
-> (I'll call them 'a' and 'b') rejected most messages from the third node
-> ('c'), while the third node rejected most messages from the other two.
-> Despite having configured the cluster to require a majority of machines to
-> agree on the state of the cluster before taking action, two simultaneous
-> master election decisions were attempted without proper coordination. In the
-> first cluster, master election was interrupted by messages from the second
-> cluster and MySQL was stopped.
-
-> In the second, single-node cluster, node 'c' was elected at 8:19 AM, and any
-> subsequent messages from the other two-node cluster were discarded. As luck
-> would have it, the 'c' node was the node that our operations team previously
-> determined to be out of date. We detected this fact and powered off this
-> out-of-date node at 8:26 AM to end the partition and prevent further data
-> drift, taking down all production database access and thus all access to
-> github.com.
-
-The partition caused inconsistency in the MySQL database--both between the
-secondary and primary, and between MySQL and other data stores like Redis.
-Because foreign key relationships were not consistent, Github showed private
-repositories to the wrong users' dashboards and incorrectly routed some newly
-created repos.
-
-Github thought carefully about their infrastructure design, and were still
-surprised by a complex interaction of partial failures and software bugs. As
-they note in the postmortem:
-
-> ... if any member of our operations team had been asked if the failover
-> should have been performed, the answer would have been a resounding
-> <b>no</b>.
-
-Distributed systems are *hard*.
-
-
-
 ## NICs and drivers
+
+Unreliable networking hardware or drivers are implicated in a broad array of
+partitions.
 
 ### BCM5709 and friends
 
-Unreliable NIC hardware or drivers are implicated in a broad array of
-partitions. <a href="http://www.spinics.net/lists/netdev/msg210485.html">Marc
-Donges and Michael Chan</a> bring us a thrilling report of the popular Broadcom
+<a href="http://www.spinics.net/lists/netdev/msg210485.html">Marc
+Donges and Michael Chan</a> provide a report of the popular Broadcom
 BCM5709 chipset abruptly dropping inbound *but not outbound* packets to a
 machine.  Because the NIC dropped inbound packets, the node was unable to
 service requests.  However, because it could still *send* heartbeats to its hot
@@ -392,36 +253,6 @@ their MAC address caches correctly, which forced them to broadcast most packets
 to every interface. 
 
 
-### Mystery RabbitMQ partitions
-
-Sometimes, nobody knows why a system partitions. This <a
-href="http://serverfault.com/questions/497308/rabbitmq-network-partition-error">RabbitMQ
-failure</a> seems like one of those cases: few retransmits, no large gaps
-between messages, and no clear loss of connectivity between nodes. Upping the
-partition detection timeout to 2 minutes reduced the frequency of partitions
-but didn't prevent them altogether. 
-
-
-### DRBD split-brain
-
-When a two-node cluster partitions, there are no cases in which a node can
-reliably declare itself to be the primary. When this happens to a DRBD filesystem, <a
-href="http://serverfault.com/questions/485545/dual-primary-ocfs2-drbd-encountered-split-brain-is-recovery-always-going-to-be">as one user reported</a>, both nodes can remain online and accept writes, leading
-to divergent filesystem-level changes. The only realistic option for resolving
-these kinds of conflicts is to discard all writes not made to a selected
-component of the cluster.
-
-
-### A NetWare split-brain
-
-Short-lived failures can lead to long outages. In this <a
-href="http://novell.support.cluster-services.free-usenet.eu/Split-Brain-Condition_T31677168_S1">Usenet
-post to novell.support.cluster-services</a>, an admin reports their two-node
-failover cluster running Novell NetWare experienced transient network outages.
-The secondary node eventually killed itself, and the primary (though still
-running) was no longer reachable by other hosts on the network. The post goes
-on to detail a series of network partition events correlated with backup jobs!
-
 
 ### MLAG, Spanning Tree, and STONITH
 
@@ -490,7 +321,7 @@ of a short surge in network traffic."
 
 ### An anonymous hosting provider
 
-From what we can gather informally, *all* the major managed hosting providers
+From what we can gather informally, almost *all* the major managed hosting providers
 experience regular network failures. One company running 100-200 nodes on a
 major hosting provider reported that in a 90-day period the provider's network
 went through five distinct periods of partitions. Some partitions disabled
@@ -511,8 +342,6 @@ posts suggest further network problems: emails failed to dispatch due to DNS
 resolution failure, and nodes reported "network unreachable." In this case, the
 impact appears to have been minimal--in part because the partitioned
 application was just a proxy.
-
-
 
 ## Cloud networks
 
@@ -564,40 +393,6 @@ convergence resulted in 30-45 minute outages and a corrupted index for
 ElasticSearch. As problems escalated, the outages occurred "2 to 4 times a
 day."
 
-
-### VoltDB split-brain on EC2
-
-One VoltDB user reports <a
-href="https://forum.voltdb.com/showthread.php?552-Nodes-stop-talking-to-each-other-and-form-independent-clusters">regular
-network failures causing replica divergence</a> but also indicates that
-their network logs included no dropped packets. Because this cluster had not
-enabled split-brain detection, both nodes ran as isolated primaries,
-causing significant data loss. 
-
-
-### ElasticSearch discovery failure on EC2
-
-<a
-href="http://elasticsearch-users.115913.n3.nabble.com/EC2-discovery-leads-to-two-masters-td3239318.html">Another
-EC2 split-brain</a>: a two-node cluster failed to converge on "roughly 1 out of
-10 startups" when discovery messages took longer than three seconds to
-exchange. As a result, both nodes would start as primaries with the same cluster
-name. Since ElasticSearch doesn't demote primaries automatically, split-brain
-persisted until administrators intervened. Upping the discovery timeout to 15
-seconds resolved the issue.
-
-
-### RabbitMQ and ElasticSearch on Windows Azure
-
-There are a few <a
-href="http://social.msdn.microsoft.com/Forums/en-US/WAVirtualMachinesforWindows/thread/b261e1aa-5ec4-42fc-80ef-5b50a0a00618">scattered
-reports of Windows Azure partitions</a>, such as <a
-href="http://rabbitmq.1065348.n5.nabble.com/Instable-HA-cluster-td24690.html">this
-account</a> of a RabbitMQ cluster which entered split-brain on a weekly basis.
-There's also this report of <a
-href="https://groups.google.com/forum/?fromgroups#!topic/elasticsearch/muZtKij3nUw">an
-ElasticSearch split-brain</a>, but since Azure is a relative newcomer compared
-to EC2, descriptions of its network reliability are limited.
 
 
 ### AWS EBS outage
@@ -767,29 +562,182 @@ href="http://www.renesys.com/2005/12/internetwide-nearcatastrophela/">in
 href="http://merit.edu/mail.archives/nanog/1997-04/msg00380.html">in 1997</a>.
 
 
+## Application-level failures
+
+Not all asynchrony originates in the physical network. Sometimes dropped or delayed messages are a consequence of crashes, program errors, OS scheduler latency, or overloaded processes. The following studies highlight the fact that partition behavior--wherein the system delays or drops messages--can occur at any layer of the software stack.
+
+### CPU use and service contention
+
+Bonsai.io <a
+href="http://www.bonsai.io/blog/2013/03/05/outage-post-mortem">discovered</a>
+high CPU and memory use on an ElasticSearch node combined with difficulty
+connecting to various cluster components, likely a consequence of an
+"excessively high number of expensive requests being allowed through to the
+cluster."
+
+They restarted the cluster, but on restarting the system split itself
+into two independent components. A subsequent cluster restart resolved the
+split-brain behavior, but customers complained they were unable to delete or create
+indices. The logs revealed that servers were repeatedly trying to recover
+unassigned indices, which "poisoned the cluster's attempt to service normal
+traffic which changes the cluster state." The failure led to 20 minutes of
+unavailability and six hours of degraded service.
+
+Bonsai concludes by noting that large-scale ElasticSearch clusters should use
+dedicated nodes which handle routing and leader election without serving normal
+requests for data, to prevent partitions under heavy load. They also emphasize
+the importance of request throttling and setting proper quorum values.
+
+### Long GC pauses and IO
+
+Stop-the-world garbage collection and blocking for disk IO can cause runtime
+latencies on the order of seconds to minutes. As <a
+href=http://blog.searchbox.io/blog/2013/03/03/january-postmortem">Searchbox
+IO</a> and [dozens of other production
+users](https://github.com/elasticsearch/elasticsearch/issues/2488) have found,
+GC pressure in an ElasticSearch cluster can cause secondary nodes to declare a
+primary dead and to attempt a new election. Because their configuration used a
+low value of `zen.minimum_master_nodes`, ElasticSearch was able to elect two
+simultaneous primaries, leading to inconsistency and downtime. Even with
+`minimum_master_nodes` larger than a majority, ElasticSearch does not prevent
+nodes from taking part in multiple network components; GC pauses and high
+IO_WAIT times due to IO can cause split-brain behavior, write loss, and index
+corruption.
+
+### MySQL overload and a Pacemaker segfault
+
+Github relies heavily on Pacemaker and Heartbeat: programs which coordinate
+cluster resources between nodes. They use Percona Replication Manager, a
+resource agent for Pacemaker, to replicate their MySQL database between three
+nodes.
+
+On September 10th, 2012, <a href="https://github.com/blog/1261-github-availability-this-week">a routine database migration caused unexpectedly high
+load on the MySQL primary</a>. Percona Replication Manager, unable to perform
+health checks against the busy MySQL instance, decided the primary was down and
+promoted a secondary. The secondary had a cold cache and performed poorly.
+Normal query load on the node caused it to slow down, and Percona failed *back*
+to the original primary. The operations team put Pacemaker into
+maintenance-mode, temporarily halting automatic failover. The site appeared to
+recover.
+
+The next morning, the operations team discovered that the standby MySQL node
+was no longer replicating changes from the primary. Operations decided to
+disable Pacemaker's maintenance mode to allow the replication manager to fix
+the problem.
+
+> Upon attempting to disable maintenance-mode, a Pacemaker segfault occurred
+> that resulted in a cluster state partition. After this update, two nodes
+> (I'll call them 'a' and 'b') rejected most messages from the third node
+> ('c'), while the third node rejected most messages from the other two.
+> Despite having configured the cluster to require a majority of machines to
+> agree on the state of the cluster before taking action, two simultaneous
+> master election decisions were attempted without proper coordination. In the
+> first cluster, master election was interrupted by messages from the second
+> cluster and MySQL was stopped.
+
+> In the second, single-node cluster, node 'c' was elected at 8:19 AM, and any
+> subsequent messages from the other two-node cluster were discarded. As luck
+> would have it, the 'c' node was the node that our operations team previously
+> determined to be out of date. We detected this fact and powered off this
+> out-of-date node at 8:26 AM to end the partition and prevent further data
+> drift, taking down all production database access and thus all access to
+> github.com.
+
+The partition caused inconsistency in the MySQL database--both between the
+secondary and primary, and between MySQL and other data stores like Redis.
+Because foreign key relationships were not consistent, Github showed private
+repositories to the wrong users' dashboards and incorrectly routed some newly
+created repos.
+
+Github thought carefully about their infrastructure design, and were still
+surprised by a complex interaction of partial failures and software bugs. As
+they note in the postmortem:
+
+> ... if any member of our operations team had been asked if the failover
+> should have been performed, the answer would have been a resounding
+> <b>no</b>.
+
+### DRBD split-brain
+
+When a two-node cluster partitions, there are no cases in which a node can
+reliably declare itself to be the primary. When this happens to a DRBD filesystem, <a
+href="http://serverfault.com/questions/485545/dual-primary-ocfs2-drbd-encountered-split-brain-is-recovery-always-going-to-be">as one user reported</a>, both nodes can remain online and accept writes, leading
+to divergent filesystem-level changes. The only realistic option for resolving
+these kinds of conflicts is to discard all writes not made to a selected
+component of the cluster.
+
+
+### A NetWare split-brain
+
+Short-lived failures can lead to long outages. In this <a
+href="http://novell.support.cluster-services.free-usenet.eu/Split-Brain-Condition_T31677168_S1">Usenet
+post to novell.support.cluster-services</a>, an admin reports their two-node
+failover cluster running Novell NetWare experienced transient network outages.
+The secondary node eventually killed itself, and the primary (though still
+running) was no longer reachable by other hosts on the network. The post goes
+on to detail a series of network partition events correlated with backup jobs!
+
+
+### VoltDB split-brain on EC2
+
+One VoltDB user reports <a
+href="https://forum.voltdb.com/showthread.php?552-Nodes-stop-talking-to-each-other-and-form-independent-clusters">regular
+network failures causing replica divergence</a> but also indicates that
+their network logs included no dropped packets. Because this cluster had not
+enabled split-brain detection, both nodes ran as isolated primaries,
+causing significant data loss.
+
+### Mystery RabbitMQ partitions
+
+Sometimes, nobody knows why a system partitions. This <a
+href="http://serverfault.com/questions/497308/rabbitmq-network-partition-error">RabbitMQ
+failure</a> seems like one of those cases: few retransmits, no large gaps
+between messages, and no clear loss of connectivity between nodes. Upping the
+partition detection timeout to 2 minutes reduced the frequency of partitions
+but didn't prevent them altogether. 
+
+### ElasticSearch discovery failure on EC2
+
+<a
+href="http://elasticsearch-users.115913.n3.nabble.com/EC2-discovery-leads-to-two-masters-td3239318.html">Another
+EC2 split-brain</a>: a two-node cluster failed to converge on "roughly 1 out of
+10 startups" when discovery messages took longer than three seconds to
+exchange. As a result, both nodes would start as primaries with the same cluster
+name. Since ElasticSearch doesn't demote primaries automatically, split-brain
+persisted until administrators intervened. Upping the discovery timeout to 15
+seconds resolved the issue.
+
+
+### RabbitMQ and ElasticSearch on Windows Azure
+
+There are a few <a
+href="http://social.msdn.microsoft.com/Forums/en-US/WAVirtualMachinesforWindows/thread/b261e1aa-5ec4-42fc-80ef-5b50a0a00618">scattered
+reports of Windows Azure partitions</a>, such as <a
+href="http://rabbitmq.1065348.n5.nabble.com/Instable-HA-cluster-td24690.html">this
+account</a> of a RabbitMQ cluster which entered split-brain on a weekly basis.
+There's also this report of <a
+href="https://groups.google.com/forum/?fromgroups#!topic/elasticsearch/muZtKij3nUw">an
+ElasticSearch split-brain</a>, but since Azure is a relative newcomer compared
+to EC2, descriptions of its network reliability are limited.
+
+
 ## Where do we go from here?
 
-This post is meant as a reference point--to illustrate that, according to a
+This article is meant as a reference point--to illustrate that, according to a
 wide range of accounts, partitions occur in many real-world environments.
 Processes, servers, NICs, switches, local and wide area networks can all fail,
 and the resulting economic consequences are real. Network outages can suddenly arise in systems that are stable for months at a time, during routine upgrades, or as a result of emergency maintenance. The consequences of these outages range from increased latency and temporary unavailability to inconsistency, corruption, and data loss. Split-brain is not an academic concern: it happens to all kinds of systems--sometimes for *days on end*. Partitions deserve serious consideration.
 
-On the other hand, some networks really *are* reliable. Engineers at major
-financial firms report that despite putting serious effort into designing
-systems that gracefully tolerate partitions, their networks rarely, if ever,
-exhibit partition behavior. Cautious engineering (and lots of money) can
-prevent outages.
+On the other hand, some networks really *are* reliable. Engineers at major financial firms have anecdotally reported that despite putting serious effort into designing systems that gracefully tolerate partitions, their networks rarely, if ever, exhibit partition behavior. Cautious engineering and aggressive network advances (along with lots of money) can prevent outages. In this article, we've presented failure cases: it's much harder to demonstrate
+that network failures haven't occurred!
 
 However, not all organizations can afford the cost or operational complexity of
 highly reliable networks. From Google and Amazon (who operate commodity
 and/or low-cost hardware due to sheer scale) to one-man startups built on
 shoestring budgets, communication-isolating network failures are a real risk.
 
-It's important to consider this risk *before* a partition occurs--because it's
-much easier to make decisions about partition tolerance on a whiteboard than to
-redesign, re-engineer, and upgrade a complex system in a production
-environment--especially when it's throwing errors at your users. For some
-applications, failure *is* an option--but you should characterize and explicitly account for it as a part of your design.
+It's important to consider this risk *before* a partition occurs--because it's much easier to make decisions about partition behavior on a whiteboard than to redesign, re-engineer, and upgrade a complex system in a production environment--especially when it's throwing errors at your users. For some applications, failure *is* an option--but you should characterize and explicitly account for it as a part of your design. Given the [additional latency](http://dl.acm.org/citation.cfm?id=2360959) and [coordination benefits](http://arxiv.org/abs/1402.2237) of partition-aware designs, you might just find that your application benefits in the average case as well.
+
 
 *We invite you to contribute your own experiences with or without network
 partitions. Open a pull request on https://github.com/aphyr/partitions-post,
